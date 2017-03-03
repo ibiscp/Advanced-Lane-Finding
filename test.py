@@ -267,7 +267,36 @@ img_warp, Minv = warp(combined, p1x, p2x, p3x, p4x, pay, pby)
 # Shape
 shape = img_warp.shape
 
-def get_polifyt(binary_warped, last_fit):
+import numpy as np
+import cv2
+import matplotlib.pyplot as plt
+
+# Read in an image
+img = cv2.imread(path + image_names[2])
+
+# Convert to RGB
+img = cv2.cvtColor(img,cv2.COLOR_BGR2RGB)
+
+# Undistort image
+undistorted = undistort_image(img)
+
+# Color threashold
+color = color_threshold(undistorted)
+
+# Sobel threashold
+gradx = sobel_threshold(undistorted, orient='x', thresh_min=gradx_min, thresh_max=gradx_max)
+grady = sobel_threshold(undistorted, orient='y', thresh_min=grady_min, thresh_max=grady_max)
+
+# Combine
+combined = color | gradx | grady
+
+# Warp image
+img_warp, Minv = warp(combined, p1x, p2x, p3x, p4x, pay, pby)
+
+# Shape
+shape = img_warp.shape
+
+def get_polifyt(binary_warped, last_fit, restart = True):
 
     # Identify the x and y positions of all nonzero pixels in the image
     nonzero = binary_warped.nonzero()
@@ -278,7 +307,7 @@ def get_polifyt(binary_warped, last_fit):
     # Create an image to draw on and an image to show the selection window
     out_img = np.dstack((binary_warped, binary_warped, binary_warped))*255
 
-    if not last_fit:
+    if restart:
         # Assuming you have created a warped binary image called "binary_warped"
         # Take a histogram of the bottom half of the image
         histogram = np.sum(binary_warped[binary_warped.shape[0]/2:,:], axis=0)
@@ -423,7 +452,7 @@ def curvature(shape, fit):
     curvature = round((left_curverad + right_curverad)/2, 2)
     center_offset = round(offset, 2)
 
-    return curvature, center_offset
+    return [left_curverad, right_curverad, curvature], center_offset
 
 curvature(shape, fit)
 
@@ -500,10 +529,39 @@ def save_image(data, fn):
     plt.savefig(fn, dpi = height)
     plt.close()
 
+diff = list()
 def sanity_check(history, line):
+    global diff
+    sanity = False
+    if history:
+        # # Maximum difference
+        # diff = 50
+        # # Check left polyfit
+        # if abs(max(line.current_fit[0]) - max(history[-1].current_fit[0])) > diff:
+        #     line.current_fit[0] = history[-1].current_fit[0]
+        #     sanity += 1
+        # # Check right polyfit
+        # if abs(max(line.current_fit[1]) - max(history[-1].current_fit[1])) > diff:
+        #     line.current_fit[1] = history[-1].current_fit[1]
+        #     sanity += 1
+        # if (line.radius_of_curvature - history[-1].radius_of_curvature) > 1000:
+        #     sanity += 1
+        if (line.current_fit[0] == line.current_fit[1]).all():
+            sanity = True
+        if abs(line.radius_of_curvature[0] - line.radius_of_curvature[1]) > 10000:
+            sanity = True
+        # Check if polynomials intersect each other
+        equation = np.roots(np.subtract(line.current_fit[0], line.current_fit[1]))
+        real_value = equation.real[abs(equation.imag)<1e-5]
+        if len(real_value) > 0 and all(abs(i) <=1000  for i in real_value):
+            sanity = True
+        # Check distance on top and botton between the two lanes
+        top = line.current_fit[0][2] - line.current_fit[1][2]
+        botton = (line.current_fit[0][0]*720**2 + line.current_fit[0][1]*720 + line.current_fit[0][3]) - \
+                 (line.current_fit[1][0]*720**2 + line.current_fit[1][1]*720 + line.current_fit[1][3])
+        diff.append(abs(top - botton))
 
-    return line
-
+    return sanity
 def build_frame(bird_img, threshold_img, polynomial_img, curv, offset, lines_img):
     # Define output image
     # Main image
@@ -545,10 +603,10 @@ def build_frame(bird_img, threshold_img, polynomial_img, curv, offset, lines_img
 
 import math
 
-plt.show()
+import math
 
 def process_image(img):
-    global history
+    global history, restart
 
     # Create a new instance of line
     line = Line()
@@ -583,30 +641,30 @@ def process_image(img):
         last = history[-1].current_fit
     except:
         last = None
-    line.current_fit, polynomial_img = get_polifyt(warped_img, last)
-    plt.imshow(polynomial_img)
-    plt.show()
+    line.current_fit, polynomial_img = get_polifyt(warped_img, last, restart)
 
     # Get curvature
     line.radius_of_curvature, line.line_base_pos = curvature(shape, line.current_fit)
 
+    ######## Call sanity check to validate last data
+    if (sanity_check(history, line)):
+        restart = True
+        line.current_fit, polynomial_img = get_polifyt(warped_img, last, restart)
+        line.radius_of_curvature, line.line_base_pos = curvature(shape, line.current_fit)
+    restart = False
+    history.append(line)
+
     # Bird's-eye view image
     bird_img, _ = warp(undistorted_img, p1x, p2x, p3x, p4x, pay, pby)
 
-    # Call sanity check to validate last data
-    line = sanity_check(history, line)
-    history.append(line)
+
 
     # Draw lines on image
     lines_img = draw_lines(undistorted_img, Minv, line.current_fit)
 
     # Build frame
-    #     if ((len(history))%10 == 0) or len(history) == 0:
-    #         curv = line.radius_of_curvature
-    #         center_offset = line.line_base_pos
-    #     else:
     last_integer = max(math.floor((len(history)) / 10) * 10 -1 ,0)
-    curv = history[last_integer].radius_of_curvature
+    curv = history[last_integer].radius_of_curvature[-1]
     center_offset = history[last_integer].line_base_pos
     result = build_frame(bird_img, threshold_img, polynomial_img, curv, center_offset, lines_img)
 
@@ -616,7 +674,8 @@ def process_image(img):
 from moviepy.editor import VideoFileClip
 
 history = []
-
+restart = True
+sanity = 0
 project_output = 'project_video_output.mp4'
 clip1 = VideoFileClip("project_video.mp4")
 white_clip = clip1.fl_image(process_image)
