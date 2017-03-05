@@ -43,9 +43,15 @@ Observation: This direction threshold is implemented, however, it is not being u
 <p align="center"><img src="output_images/Magnitudethreshold.png"/></p>
 
 ### Color Threshold
+For the color threshold the image is firstly converted to HLS where the L and S channel are used to filter the yellow and white lanes.
+
+Also, I decided to filter the yellow line from a specific range from the HLS and the white lane from the RGB image.
+
+At the end, all the filters are combined together, and the output is presented bellow:
 <p align="center"><img src="output_images/Colorthreshold.png"/></p>
 
 ### Threshold Combined
+Here is presented all the threshold presented above combined in the same image. It is noticed now how the lines can be easily identified.
 <p align="center"><img src="output_images/Thresholdcombined.png"/></p>
 
 ### Warp Image
@@ -80,6 +86,11 @@ Bellow is presented the pipeline in order to have the lanes correctly identified
 6. Get polynomial
 7. Get curvature and lane offset
 8. Sanity check
+	1. Check if lines did not converge to the same point
+	2. Check if radius are similar
+	3. Check if polynomials do not intersect each other
+	4. Check if distance on top and bottom of image are similar
+	5. Check if difference between current and last lane identified
 9. Average lane position
 10. Draw lines on image
 
@@ -88,6 +99,13 @@ The task of adjusting the parameters, in order to get a satisfactory result is r
 
 Bellow is presented a video containing the output result for the given video.
 <p align="center">[![Behavioral Cloning](https://i.ytimg.com/vi/jzn0a5WvEDE/hqdefault.jpg)](https://youtu.be/jzn0a5WvEDE)
+
+## Discussion
+This algorithm was tested in two more videos, however the result is not as robust as the one presented above, and it fail in some frames.
+
+For the challenge video, the bird's-eye view does not look nice as the one here presented and the distant lanes are not sharp, causing the algorithm to fail sometimes in recognizing it.
+
+Also, it would be necessary to find a way to better tune the parameters, not manually, because even if I do the best I can tuning it, it will fail if tested in different conditions, such as in snow, rain and at night.
 
 ## Future Development
 For future development, I would better tune the parameters in order to make it more robust and capable of recognizing the lane lines in different videos, such as the challenge videos.
